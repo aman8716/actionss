@@ -1,0 +1,67 @@
+name: Download from Artifactory (Minimal)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: "Artifactory URL prefix (e.g., https://artifactory.company.com/artifactory/)"
+        required: true
+        type: string
+      suffix:
+        description: "Path after prefix (e.g., generic-local/builds/app-1.2.3.zip)"
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build full URL
+        id: build
+        env:
+          PREFIX_IN: ${{ github.event.inputs.prefix }}
+          SUFFIX_IN: ${{ github.event.inputs.suffix }}
+        run: |
+          set -euo pipefail
+          PREFIX="${PREFIX_IN%/}/"      # ensure trailing slash
+          SFX="${SUFFIX_IN#/}"          # strip leading slash if present
+          FULL_URL="${PREFIX}${SFX}"
+
+          # Basic validation
+          if ! echo "$FULL_URL" | grep -Eq '^https://'; then
+            echo "❌ URL must be HTTPS. Got: $FULL_URL"
+            exit 1
+          fi
+
+          FILE="$(basename "$SFX")"
+          if [[ -z "$FILE" || "$FILE" == "/" ]]; then
+            echo "❌ Suffix must end with a filename. Got: $SFX"
+            exit 1
+          fi
+
+          echo "full_url=$FULL_URL" >> "$GITHUB_OUTPUT"
+          echo "filename=$FILE"     >> "$GITHUB_OUTPUT"
+
+      - name: Download via curl
+        env:
+          URL: ${{ steps.build.outputs.full_url }}
+          FILENAME: ${{ steps.build.outputs.filename }}
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+          ARTIFACTORY_API_KEY: ${{ secrets.ARTIFACTORY_API_KEY }}
+          ARTIFACTORY_TOKEN: ${{ secrets.ARTIFACTORY_TOKEN }} # optional bearer token
+        run: |
+          set -euo pipefail
+          if [[ -n "${ARTIFACTORY_TOKEN:-}" ]]; then
+            curl --location --fail --show-error --retry 3 \
+              -H "Authorization: Bearer ${ARTIFACTORY_TOKEN}" \
+              "$URL" -o "$FILENAME"
+          else
+            if [[ -z "${ARTIFACTORY_USER:-}" || -z "${ARTIFACTORY_API_KEY:-}" ]]; then
+              echo "❌ Provide ARTIFACTORY_TOKEN or ARTIFACTORY_USER + ARTIFACTORY_API_KEY as secrets."
+              exit 1
+            fi
+            curl --location --fail --show-error --retry 3 \
+              -u "${ARTIFACTORY_USER}:${ARTIFACTORY_API_KEY}" \
+              "$URL" -o "$FILENAME"
+          fi
