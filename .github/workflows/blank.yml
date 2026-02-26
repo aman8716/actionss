@@ -12,7 +12,7 @@ jobs:
   download:
     runs-on: ubuntu-latest
     env:
-      # 🔧 Set your fixed Artifactory URL prefix ONCE here.
+      # 🔧 Set your fixed Artifactory URL prefix here.
       # Examples:
       #   https://artifactory.company.com/artifactory/
       #   https://artifactory.company.com/artifactory/generic-local/
@@ -40,6 +40,7 @@ jobs:
             exit 1
           fi
 
+          # Export outputs for the next step
           echo "full_url=$FULL_URL" >> "$GITHUB_OUTPUT"
           echo "filename=$FILE"     >> "$GITHUB_OUTPUT"
 
