@@ -1,12 +1,8 @@
-name: Download from Artifactory (Minimal)
+name: Download from Artifactory (Suffix Only)
 
 on:
   workflow_dispatch:
     inputs:
-      prefix:
-        description: "Artifactory URL prefix (e.g., https://artifactory.company.com/artifactory/)"
-        required: true
-        type: string
       suffix:
         description: "Path after prefix (e.g., generic-local/builds/app-1.2.3.zip)"
         required: true
@@ -15,28 +11,32 @@ on:
 jobs:
   download:
     runs-on: ubuntu-latest
+    env:
+      # 🔧 Set your fixed Artifactory URL prefix ONCE here.
+      # Examples:
+      #   https://artifactory.company.com/artifactory/
+      #   https://artifactory.company.com/artifactory/generic-local/
+      ARTIFACTORY_PREFIX: https://your-artifactory.example.com/artifactory/
 
     steps:
       - name: Build full URL
         id: build
         env:
-          PREFIX_IN: ${{ github.event.inputs.prefix }}
           SUFFIX_IN: ${{ github.event.inputs.suffix }}
         run: |
           set -euo pipefail
-          PREFIX="${PREFIX_IN%/}/"      # ensure trailing slash
-          SFX="${SUFFIX_IN#/}"          # strip leading slash if present
+          PREFIX="${ARTIFACTORY_PREFIX%/}/"   # ensure exactly one trailing slash
+          SFX="${SUFFIX_IN#/}"                # strip any leading slash from input
           FULL_URL="${PREFIX}${SFX}"
 
-          # Basic validation
+          # Basic validations
           if ! echo "$FULL_URL" | grep -Eq '^https://'; then
             echo "❌ URL must be HTTPS. Got: $FULL_URL"
             exit 1
           fi
-
           FILE="$(basename "$SFX")"
           if [[ -z "$FILE" || "$FILE" == "/" ]]; then
-            echo "❌ Suffix must end with a filename. Got: $SFX"
+            echo "❌ Suffix must end with a filename (e.g., .../file.ext). Got: $SFX"
             exit 1
           fi
 
@@ -47,9 +47,9 @@ jobs:
         env:
           URL: ${{ steps.build.outputs.full_url }}
           FILENAME: ${{ steps.build.outputs.filename }}
-          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
-          ARTIFACTORY_API_KEY: ${{ secrets.ARTIFACTORY_API_KEY }}
-          ARTIFACTORY_TOKEN: ${{ secrets.ARTIFACTORY_TOKEN }} # optional bearer token
+          ARTIFACTORY_TOKEN: ${{ secrets.ARTIFACTORY_TOKEN }}    # preferred
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}      # fallback
+          ARTIFACTORY_API_KEY: ${{ secrets.ARTIFACTORY_API_KEY }}# fallback
         run: |
           set -euo pipefail
           if [[ -n "${ARTIFACTORY_TOKEN:-}" ]]; then
