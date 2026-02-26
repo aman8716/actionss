@@ -1,0 +1,54 @@
+name: Download from Artifactory (Suffix Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      suffix:
+        description: "Enter artifact path after prefix "
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    env:
+      # 🔧 Set your fixed Artifactory prefix here
+      ARTIFACTORY_PREFIX: https://your-artifactory.example.com/artifactory/
+
+    steps:
+      - name: Build full URL
+        id: build
+        env:
+          SUFFIX_IN: ${{ github.event.inputs.suffix }}
+        run: |
+          set -euo pipefail
+
+          PREFIX="${ARTIFACTORY_PREFIX%/}/"        # ensure trailing slash
+          SFX="${SUFFIX_IN#/}"                    # strip leading slash
+          FULL_URL="${PREFIX}${SFX}"              # final URL
+
+          FILE="$(basename "$SFX")"               # extract file name
+
+          echo "full_url=$FULL_URL" >> $GITHUB_OUTPUT
+          echo "filename=$FILE"     >> $GITHUB_OUTPUT
+
+      - name: Download via curl
+        env:
+          URL: ${{ steps.build.outputs.full_url }}
+          FILENAME: ${{ steps.build.outputs.filename }}
+          ARTIFACTORY_TOKEN: ${{ secrets.ARTIFACTORY_TOKEN }}
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+          ARTIFACTORY_API_KEY: ${{ secrets.ARTIFACTORY_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Prefer bearer token if available
+          if [[ -n "${ARTIFACTORY_TOKEN:-}" ]]; then
+            curl --fail --location --show-error \
+              -H "Authorization: Bearer ${ARTIFACTORY_TOKEN}" \
+              "$URL" -o "$FILENAME"
+          else
+            curl --fail --location --show-error \
+              -u "${ARTIFACTORY_USER}:${ARTIFACTORY_API_KEY}" \
+              "$URL" -o "$FILENAME"
+          fi
